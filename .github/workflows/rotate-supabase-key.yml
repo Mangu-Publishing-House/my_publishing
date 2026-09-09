@@ -69,7 +69,10 @@ jobs:
 
       - name: Update GitHub Secret — NEXT_PUBLIC_SUPABASE_ANON_KEY
         if: ${{ github.event.inputs.dry_run != 'true' }}
-        uses: gliech/create-github-secret-action@v1
+        # Pinned to the v1 tag's commit SHA (REPO_AUDIT_2026-08-21 F6.4): this
+        # action holds a secrets-write PAT, so a moved/repointed tag on a
+        # single-maintainer action would be a real supply-chain risk here.
+        uses: gliech/create-github-secret-action@ea87807ab20663b30a1a2d14d7f6dd9490b1e7a1 # v1
         with:
           name: NEXT_PUBLIC_SUPABASE_ANON_KEY
           value: ${{ github.event.inputs.new_anon_key }}
@@ -77,7 +80,7 @@ jobs:
 
       - name: Update GitHub Secret — NEXT_PUBLIC_SUPABASE_URL (if provided)
         if: ${{ github.event.inputs.dry_run != 'true' && github.event.inputs.new_supabase_url != '' }}
-        uses: gliech/create-github-secret-action@v1
+        uses: gliech/create-github-secret-action@ea87807ab20663b30a1a2d14d7f6dd9490b1e7a1 # v1
         with:
           name: NEXT_PUBLIC_SUPABASE_URL
           value: ${{ github.event.inputs.new_supabase_url }}
