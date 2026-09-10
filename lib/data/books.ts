@@ -282,6 +282,76 @@ function mapMongoBookCard(b: {
 }
 
 /**
+ * Sitemap entries for every published+public book. Skips slug-less rows —
+ * the /books/[slug] page fetches by slug only, so /books/{id} URLs are 404s
+ * to crawlers and would drag the sitemap's authority down. Collects unique
+ * genres in one pass so the sitemap can emit /genres/{genre} URLs from the
+ * same data.
+ */
+export type SitemapBookEntry = { slug: string; updated_at: string; genre: string | null };
+
+export async function listBooksForSitemap(): Promise<{
+  books: SitemapBookEntry[];
+  genres: string[];
+}> {
+  const books: SitemapBookEntry[] = [];
+  const genres = new Set<string>();
+
+  if (isMongoPrimary()) {
+    const { getDb } = await import('@/lib/mongo');
+    const db = await getDb();
+    const rows = await db
+      .collection('books')
+      .find({ status: 'published', visibility: 'public' })
+      .project({ slug: 1, genre: 1, updated_at: 1 })
+      .sort({ updated_at: -1 })
+      .toArray();
+    for (const row of rows) {
+      const slug = typeof row.slug === 'string' ? row.slug.trim() : '';
+      if (!slug) continue;
+      const updated =
+        row.updated_at instanceof Date
+          ? row.updated_at.toISOString()
+          : String(row.updated_at ?? new Date().toISOString());
+      const genre = typeof row.genre === 'string' ? row.genre.trim() : '';
+      books.push({ slug, updated_at: updated, genre: genre || null });
+      if (genre) genres.add(genre);
+    }
+    return { books, genres: Array.from(genres) };
+  }
+
+  const { createPublicCatalogClient } = await import('@/lib/supabase/public-queries');
+  const supabase = createPublicCatalogClient();
+  const pageSize = 500;
+  let from = 0;
+  let hasMore = true;
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('books')
+      .select('slug, genre, updated_at')
+      .eq('status', 'published')
+      .eq('visibility', 'public')
+      .order('updated_at', { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (error || !data) break;
+    for (const row of data) {
+      const slug = typeof row.slug === 'string' ? row.slug.trim() : '';
+      if (!slug) continue;
+      const genre = typeof row.genre === 'string' ? row.genre.trim() : '';
+      books.push({
+        slug,
+        updated_at: String(row.updated_at ?? new Date().toISOString()),
+        genre: genre || null,
+      });
+      if (genre) genres.add(genre);
+    }
+    hasMore = data.length === pageSize;
+    from += pageSize;
+  }
+  return { books, genres: Array.from(genres) };
+}
+
+/**
  * Featured rail. Both providers key off `is_featured`; Mongo additionally tops
  * the rail up with highest-rated published books so it is never empty before an
  * editor has flagged `limit` titles.

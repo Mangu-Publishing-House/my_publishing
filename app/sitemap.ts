@@ -1,24 +1,46 @@
 import { MetadataRoute } from 'next';
-import { createPublicCatalogClient } from '@/lib/supabase/public-queries';
+// Phoenix WS2d — dual-run catalog reads (E-012).
+import { listBooksForSitemap } from '@/lib/data/books';
+import { listAuthorsForSitemap } from '@/lib/data/authors';
 import { getSiteUrl } from '@/lib/seo/siteUrl';
 import { FEATURE_COMICS, FEATURE_PAPERS, FEATURE_AUDIO } from '@/lib/flags';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = getSiteUrl();
-  const supabase = createPublicCatalogClient();
 
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: baseUrl, lastModified: new Date(), changeFrequency: 'daily', priority: 1.0 },
     { url: `${baseUrl}/books`, lastModified: new Date(), changeFrequency: 'daily', priority: 0.95 },
     // Flag-off contract: excluded from sitemap when feature is disabled (P-057)
     ...(FEATURE_COMICS
-      ? [{ url: `${baseUrl}/comics`, lastModified: new Date(), changeFrequency: 'weekly' as const, priority: 0.8 }]
+      ? [
+          {
+            url: `${baseUrl}/comics`,
+            lastModified: new Date(),
+            changeFrequency: 'weekly' as const,
+            priority: 0.8,
+          },
+        ]
       : []),
     ...(FEATURE_PAPERS
-      ? [{ url: `${baseUrl}/papers`, lastModified: new Date(), changeFrequency: 'weekly' as const, priority: 0.75 }]
+      ? [
+          {
+            url: `${baseUrl}/papers`,
+            lastModified: new Date(),
+            changeFrequency: 'weekly' as const,
+            priority: 0.75,
+          },
+        ]
       : []),
     ...(FEATURE_AUDIO
-      ? [{ url: `${baseUrl}/audio`, lastModified: new Date(), changeFrequency: 'weekly' as const, priority: 0.75 }]
+      ? [
+          {
+            url: `${baseUrl}/audio`,
+            lastModified: new Date(),
+            changeFrequency: 'weekly' as const,
+            priority: 0.75,
+          },
+        ]
       : []),
     {
       url: `${baseUrl}/authors`,
@@ -125,44 +147,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ];
 
-  const bookRoutes: MetadataRoute.Sitemap = [];
+  let bookRoutes: MetadataRoute.Sitemap = [];
   let genreRoutes: MetadataRoute.Sitemap = [];
   try {
-    const uniqueGenres = new Set<string>();
-    const pageSize = 500;
-    let from = 0;
-    let hasMore = true;
-
-    while (hasMore) {
-      const { data: books, error } = await supabase
-        .from('books')
-        .select('id, slug, genre, updated_at')
-        .eq('status', 'published')
-        .eq('visibility', 'public')
-        .order('updated_at', { ascending: false })
-        .range(from, from + pageSize - 1);
-
-      if (error || !books) {
-        break;
-      }
-
-      for (const book of books) {
-        bookRoutes.push({
-          url: `${baseUrl}/books/${book.slug || book.id}`,
-          lastModified: new Date(book.updated_at),
-          changeFrequency: 'weekly' as const,
-          priority: 0.8,
-        });
-
-        const genre = book.genre?.trim();
-        if (genre) uniqueGenres.add(genre);
-      }
-
-      hasMore = books.length === pageSize;
-      from += pageSize;
-    }
-
-    genreRoutes = Array.from(uniqueGenres).map((genre) => ({
+    const { books, genres } = await listBooksForSitemap();
+    // Slug-less books skipped upstream — /books/{id} URLs 404 against the
+    // slug-only PDP lookup, so emitting them tanks crawler trust.
+    bookRoutes = books.map((book) => ({
+      url: `${baseUrl}/books/${book.slug}`,
+      lastModified: new Date(book.updated_at),
+      changeFrequency: 'weekly' as const,
+      priority: 0.8,
+    }));
+    genreRoutes = genres.map((genre) => ({
       url: `${baseUrl}/genres/${encodeURIComponent(genre)}`,
       lastModified: new Date(),
       changeFrequency: 'weekly' as const,
@@ -174,18 +171,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   let authorRoutes: MetadataRoute.Sitemap = [];
   try {
-    const { data: authors, error } = await supabase
-      .from('authors')
-      .select('id, pen_name, updated_at')
-      .order('updated_at', { ascending: false });
-    if (!error && authors) {
-      authorRoutes = authors.map((author) => ({
-        url: `${baseUrl}/authors/${author.id}`,
-        lastModified: new Date(author.updated_at),
-        changeFrequency: 'weekly' as const,
-        priority: 0.7,
-      }));
-    }
+    const authors = await listAuthorsForSitemap();
+    authorRoutes = authors.map((author) => ({
+      url: `${baseUrl}/authors/${author.id}`,
+      lastModified: new Date(author.updated_at),
+      changeFrequency: 'weekly' as const,
+      priority: 0.7,
+    }));
   } catch (e) {
     console.error('Sitemap: authors fetch failed', e);
   }

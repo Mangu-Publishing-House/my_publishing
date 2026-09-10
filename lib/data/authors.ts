@@ -29,6 +29,52 @@ export type DirectoryAuthor = {
 };
 
 /**
+ * Sitemap entries for every author. Skips rows with no id/pen_name so we
+ * never emit /authors/undefined URLs.
+ */
+export type SitemapAuthorEntry = { id: string; updated_at: string };
+
+export async function listAuthorsForSitemap(): Promise<SitemapAuthorEntry[]> {
+  if (isMongoPrimary()) {
+    try {
+      const { getDb } = await import('@/lib/mongo');
+      const db = await getDb();
+      const rows = await db
+        .collection('authors')
+        .find({})
+        .project({ pen_name: 1, updated_at: 1 })
+        .sort({ updated_at: -1 })
+        .toArray();
+      return rows
+        .filter((row) => row._id != null && typeof row.pen_name === 'string' && row.pen_name.trim())
+        .map((row) => ({
+          id: String(row._id),
+          updated_at:
+            row.updated_at instanceof Date
+              ? row.updated_at.toISOString()
+              : String(row.updated_at ?? new Date().toISOString()),
+        }));
+    } catch {
+      return [];
+    }
+  }
+
+  const { createPublicCatalogClient } = await import('@/lib/supabase/public-queries');
+  const supabase = createPublicCatalogClient();
+  const { data, error } = await supabase
+    .from('authors')
+    .select('id, pen_name, updated_at')
+    .order('updated_at', { ascending: false });
+  if (error || !data) return [];
+  return data
+    .filter((row) => row.id && typeof row.pen_name === 'string' && row.pen_name.trim())
+    .map((row) => ({
+      id: String(row.id),
+      updated_at: String(row.updated_at ?? new Date().toISOString()),
+    }));
+}
+
+/**
  * Public /authors directory — all authors ordered by total_books desc.
  */
 export async function listAuthorsForDirectory(): Promise<DirectoryAuthor[]> {
