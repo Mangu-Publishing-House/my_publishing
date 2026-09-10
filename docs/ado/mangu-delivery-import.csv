@@ -1,0 +1,14 @@
+Work Item Type,Title,Description,Tags,Priority
+Epic,"[EPIC] MANGU delivery system + product revamp","GitHub source of truth: https://github.com/Mangu-Publishing-House/my_publishing/issues/415. Canonical code+issues on GitHub; ADO is a mirror.","ado-sync;phase-workflow",1
+Feature,"[FEATURE] GitHub ↔ Azure DevOps ↔ Copilot delivery workflow","GitHub #416. Issue templates, labels, Copilot contract, ADO mapping.","ado-sync;phase-workflow",1
+Feature,"[FEATURE] Site and catalog revamp (www.mangu-publishers.com)","GitHub #417. Held behind launch freeze #209 except docs.","phase-revamp;phase-post-go",1
+Feature,"[FEATURE] COO operating system for the publishing house","GitHub #418. Title pipeline + weekly cadence.","type-coo;phase-revamp",1
+Feature,"[FEATURE] Agent factory (GitHub Copilot + house agents)","GitHub #419. House agents in .github/agents/.","type-agent;phase-workflow",1
+Feature,"[FEATURE] Commerce path remains launch-critical (do not fork)","GitHub #420. Do not duplicate #205/#203/#199/#195/#198.","phase-post-go",1
+User Story,"[STORY] Document GitHub ↔ Azure DevOps mapping and connect steps","GitHub #422. Mapping lives in docs/WORKFLOW.md.","ado-sync;phase-workflow",2
+User Story,"[STORY] Re-auth GitHub connector with Projects permission and attach board","GitHub #423. Org project MANGU Delivery.","phase-workflow",2
+User Story,"[STORY] Homepage IA: publish, discover, buy, read — one screen","GitHub #424. Implementation is phase-post-go.","phase-revamp;phase-post-go",2
+User Story,"[STORY] Catalog: genre depth, search, and empty-state truth","GitHub #425.","phase-revamp;phase-post-go",2
+User Story,"[STORY] Name the title pipeline and map it to existing tables/routes","GitHub #426.","type-coo",2
+User Story,"[STORY] Weekly COO cadence as a checklist issue + agent","GitHub #427.","type-coo",2
+User Story,"[STORY] Copilot Studio / Copilot coding agent entry path","GitHub #429. Workers consume GitHub issues; they do not own the backlog.","type-agent;phase-workflow",2

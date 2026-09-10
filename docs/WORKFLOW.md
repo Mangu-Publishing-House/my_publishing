@@ -46,6 +46,28 @@ From #209 / `docs/NEXT_GO.md`:
 Permitted now: docs, CI-truth, branch hygiene, one recovery vehicle per failure, approved security.
 Held: product revamp merges, Dependabot majors, release 1.0.0.
 
+## Operator scripts (board + ADO)
+
+These cannot be executed from this Grok connector: GitHub Projects is 403, and Azure DevOps is not a connected app.
+
+On a machine where you are logged into `gh` as an org owner:
+
+```bash
+gh auth refresh -s project,read:project -h github.com
+chmod +x scripts/gh-seed-delivery-board.sh
+./scripts/gh-seed-delivery-board.sh
+```
+
+That creates org project **MANGU Delivery** and attaches #415–#429.
+
+Azure Boards first load (no live sync until you install the GitHub App):
+
+1. Set `ADO_ORG` + `ADO_PROJECT` if you want the helper script.
+2. Boards → Queries → Import work items → `docs/ado/mangu-delivery-import.csv`
+3. Details: `docs/ado/README.md`
+
+Optional Actions job: **Seed MANGU Delivery board** (`workflow_dispatch`). Needs repo secret `PROJECT_ADMIN_TOKEN` with `project` scope. Default is dry-run.
+
 ## Azure DevOps mirror
 
 Azure DevOps is **not** a connected tool in this Grok session. GitHub stays authoritative until an ADO org is wired.
@@ -98,12 +120,13 @@ Local / GitHub Copilot CLI: `docs/COPILOT_CLI.md`.
 
 ## GitHub Project board
 
-Creating the board from this session failed (`projects` API 403 on the current GitHub connector). After reconnecting GitHub with Projects permission:
+Creating the board from this session failed (`projects` API 403 on the current GitHub connector). After `gh auth refresh -s project`:
 
-1. Create org project **MANGU Delivery** (board layout).
-2. Columns: Backlog → Ready → In progress → Review → Done.
-3. Attach #415 and children.
-4. Status field is the only workflow state.
+```bash
+./scripts/gh-seed-delivery-board.sh
+```
+
+Columns: Backlog → Ready → In progress → Review → Done. Status field is the only workflow state.
 
 ## Seeded backlog
 
@@ -115,12 +138,12 @@ Creating the board from this session failed (`projects` API 403 on the current G
 | 418 | Feature | COO operating system |
 | 419 | Feature | Agent factory |
 | 420 | Feature | Commerce path (points at existing P0s) |
-| 421 | Story | Issue templates |
+| 421 | Story | Issue templates (closed via #430) |
 | 422 | Story | ADO mapping |
 | 423 | Story | Projects permission + board |
 | 424 | Story | Homepage IA |
 | 425 | Story | Catalog empty-state truth |
 | 426 | Story | Title pipeline map |
 | 427 | Story | Weekly COO cadence |
-| 428 | Story | COO + backlog-steward agents |
+| 428 | Story | COO + backlog-steward agents (closed via #430) |
 | 429 | Story | Copilot entry path |

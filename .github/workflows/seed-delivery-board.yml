@@ -1,0 +1,32 @@
+name: Seed MANGU Delivery board
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Print plan only
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Explain token limits
+        run: |
+          echo "GITHUB_TOKEN in Actions usually cannot create org Projects v2."
+          echo "Use a PAT in secret PROJECT_ADMIN_TOKEN with 'project' scope,"
+          echo "or run scripts/gh-seed-delivery-board.sh locally after:"
+          echo "  gh auth refresh -s project,read:project -h github.com"
+      - name: Seed board
+        if: ${{ inputs.dry_run == false && secrets.PROJECT_ADMIN_TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_ADMIN_TOKEN }}
+        run: |
+          chmod +x scripts/gh-seed-delivery-board.sh
+          ./scripts/gh-seed-delivery-board.sh
