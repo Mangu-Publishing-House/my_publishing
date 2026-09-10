@@ -14,10 +14,13 @@ jest.mock('@/lib/mongo', () => ({
 
 import {
   DEFAULT_PAGE_SIZE,
+  checkWebhookEventProcessed,
   getBookById,
   getBookBySlug,
   getBooks,
   getUserOrders,
+  markWebhookEventProcessed,
+  recordWebhookEvent,
   searchBooks,
   upsertOrderByPaymentIntent,
 } from '@/lib/mongo-queries';
@@ -239,5 +242,75 @@ describe('lib/mongo-queries', () => {
   it('getBookById returns null when missing', async () => {
     const { db } = mockDb({ aggregateResult: [] });
     await expect(getBookById('507f1f77bcf86cd799439011', {}, db)).resolves.toBeNull();
+  });
+
+  // F6.2 — webhook_events event-log ledger (Mongo leg; see also
+  // tests/unit/webhook-event-log-dual-run.test.ts for the route-level
+  // deliver-twice coverage).
+  describe('webhook event-log ledger', () => {
+    it('checkWebhookEventProcessed is false when no record exists', async () => {
+      const { db, findOne } = mockDb({ findOneResult: null });
+      await expect(checkWebhookEventProcessed('evt_1', db)).resolves.toEqual({
+        processed: false,
+      });
+      expect(findOne).toHaveBeenCalledWith({ event_id: 'evt_1' }, { projection: { processed: 1 } });
+    });
+
+    it('checkWebhookEventProcessed is false when recorded but not yet processed', async () => {
+      const { db } = mockDb({ findOneResult: { event_id: 'evt_1', processed: false } });
+      await expect(checkWebhookEventProcessed('evt_1', db)).resolves.toEqual({
+        processed: false,
+      });
+    });
+
+    it('checkWebhookEventProcessed is true once marked processed', async () => {
+      const { db } = mockDb({ findOneResult: { event_id: 'evt_1', processed: true } });
+      await expect(checkWebhookEventProcessed('evt_1', db)).resolves.toEqual({
+        processed: true,
+      });
+    });
+
+    it('recordWebhookEvent upserts by event_id, setting event_type and processed:false', async () => {
+      const { db, updateOne } = mockDb();
+      await recordWebhookEvent({ id: 'evt_1', type: 'checkout.session.completed' }, db);
+      expect(updateOne).toHaveBeenCalledWith(
+        { event_id: 'evt_1' },
+        {
+          $setOnInsert: { event_id: 'evt_1', created_at: expect.any(Date) },
+          $set: { event_type: 'checkout.session.completed', processed: false },
+        },
+        { upsert: true }
+      );
+    });
+
+    it('markWebhookEventProcessed sets processed:true and clears error_message on success', async () => {
+      const { db, updateOne } = mockDb();
+      await markWebhookEventProcessed('evt_1', undefined, db);
+      expect(updateOne).toHaveBeenCalledWith(
+        { event_id: 'evt_1' },
+        {
+          $set: {
+            processed: true,
+            error_message: null,
+            processed_at: expect.any(Date),
+          },
+        }
+      );
+    });
+
+    it('markWebhookEventProcessed sets processed:false and records error_message on failure', async () => {
+      const { db, updateOne } = mockDb();
+      await markWebhookEventProcessed('evt_1', 'boom', db);
+      expect(updateOne).toHaveBeenCalledWith(
+        { event_id: 'evt_1' },
+        {
+          $set: {
+            processed: false,
+            error_message: 'boom',
+            processed_at: expect.any(Date),
+          },
+        }
+      );
+    });
   });
 });

@@ -11,7 +11,12 @@ import { enforceRateLimit, getClientIdentifier } from '@/lib/rate-limit';
 import { getStripe } from '@/lib/stripe/server';
 import { sendPurchaseReceiptForCheckoutSession } from '@/lib/email/triggers';
 import { isMongoPrimary } from '@/lib/db/provider';
-import { upsertOrderByPaymentIntent } from '@/lib/mongo-queries';
+import {
+  upsertOrderByPaymentIntent,
+  checkWebhookEventProcessed,
+  recordWebhookEvent as recordWebhookEventMongo,
+  markWebhookEventProcessed as markWebhookEventProcessedMongo,
+} from '@/lib/mongo-queries';
 import type { WebhookProcessingResult, CheckoutMetadata } from '@/types/webhook';
 
 // Webhook secret for signature verification
@@ -405,7 +410,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = createAdminClient();
 
   // Check idempotency
-  const idempotencyCheck = await checkIdempotency(supabase, event.id);
+  // Phoenix dual-run (F6.2): the event-log ledger has a Mongo leg, separate
+  // from order-level idempotency (upsertOrderByPaymentIntent) above.
+  const idempotencyCheck = isMongoPrimary()
+    ? await checkWebhookEventProcessed(event.id)
+    : await checkIdempotency(supabase, event.id);
   if (idempotencyCheck.processed) {
     console.log(`[Webhook] Event already processed: ${event.id}`);
     return NextResponse.json({
@@ -415,7 +424,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // Record the event
-  await recordWebhookEvent(supabase, event);
+  if (isMongoPrimary()) {
+    await recordWebhookEventMongo(event);
+  } else {
+    await recordWebhookEvent(supabase, event);
+  }
 
   // Process the event
   let result: WebhookProcessingResult;
@@ -467,7 +480,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Mark as processed
-    await markEventProcessed(supabase, event.id, result.success ? undefined : result.error);
+    if (isMongoPrimary()) {
+      await markWebhookEventProcessedMongo(event.id, result.success ? undefined : result.error);
+    } else {
+      await markEventProcessed(supabase, event.id, result.success ? undefined : result.error);
+    }
 
     const duration = Date.now() - startTime;
     console.log(`[Webhook] Processed ${event.type} in ${duration}ms:`, result);
@@ -486,7 +503,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     console.error(`[Webhook] Error processing ${event.type}:`, error);
 
     // Mark as failed
-    await markEventProcessed(supabase, event.id, errorMessage);
+    if (isMongoPrimary()) {
+      await markWebhookEventProcessedMongo(event.id, errorMessage);
+    } else {
+      await markEventProcessed(supabase, event.id, errorMessage);
+    }
 
     // Return 500 to trigger retry for unexpected errors
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

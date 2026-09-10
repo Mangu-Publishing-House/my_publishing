@@ -153,6 +153,23 @@ export interface AuditLog {
   created_at: Date;
 }
 
+/**
+ * Mongo leg of the Stripe webhook event-log idempotency ledger (F6.2).
+ * Independent of order-level idempotency (`Order.stripe_payment_intent_id`);
+ * this tracks "have we seen Stripe event id X before" regardless of which
+ * order (if any) it maps to. Unique index on `event_id`
+ * (`webhook_events_event_id_uq`, scripts/mongo-ensure-indexes.ts).
+ */
+export interface WebhookEventDoc {
+  _id: ObjectId;
+  event_id: string;
+  event_type: string;
+  processed: boolean;
+  error_message?: string | null;
+  processed_at?: Date | null;
+  created_at: Date;
+}
+
 /** Shared pagination for query helpers (default page size 20). */
 export interface MongoPagination {
   page?: number;

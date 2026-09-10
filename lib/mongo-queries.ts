@@ -347,6 +347,79 @@ export async function upsertOrderByPaymentIntent(
 }
 
 /**
+ * Mongo leg of the Stripe webhook event-log idempotency ledger (F6.2 /
+ * docs/REPO_AUDIT_2026-08-21.md). Distinct from order-level idempotency
+ * (`upsertOrderByPaymentIntent` above) — this tracks "have we seen Stripe
+ * event id X before" independent of which order it maps to. Mirrors the
+ * Supabase `webhook_events` helpers in `app/api/webhook/route.ts`
+ * (`checkIdempotency` / `recordWebhookEvent` / `markEventProcessed`); relies
+ * on the unique index on `event_id` (`webhook_events_event_id_uq`,
+ * scripts/mongo-ensure-indexes.ts).
+ */
+
+/**
+ * Has this Stripe event id already been fully processed?
+ */
+export async function checkWebhookEventProcessed(
+  eventId: string,
+  db?: Db
+): Promise<{ processed: boolean }> {
+  const database = await resolveDb(db);
+  const existing = await database
+    .collection('webhook_events')
+    .findOne({ event_id: eventId }, { projection: { processed: 1 } });
+  return { processed: Boolean(existing?.processed) };
+}
+
+/**
+ * Record (or re-record, pre-processing) a received webhook event. Upsert by
+ * `event_id`: `created_at` is set only on first sight; `event_type` and
+ * `processed: false` are (re)written every call, matching the Supabase
+ * `upsert(..., { onConflict: 'event_id' })` semantics this replaces.
+ */
+export async function recordWebhookEvent(
+  event: { id: string; type: string },
+  db?: Db
+): Promise<void> {
+  const database = await resolveDb(db);
+  await database.collection('webhook_events').updateOne(
+    { event_id: event.id },
+    {
+      $setOnInsert: {
+        event_id: event.id,
+        created_at: new Date(),
+      },
+      $set: {
+        event_type: event.type,
+        processed: false,
+      },
+    },
+    { upsert: true }
+  );
+}
+
+/**
+ * Mark a recorded event processed (or failed, when `error` is set).
+ */
+export async function markWebhookEventProcessed(
+  eventId: string,
+  error?: string,
+  db?: Db
+): Promise<void> {
+  const database = await resolveDb(db);
+  await database.collection('webhook_events').updateOne(
+    { event_id: eventId },
+    {
+      $set: {
+        processed: !error,
+        error_message: error ?? null,
+        processed_at: new Date(),
+      },
+    }
+  );
+}
+
+/**
  * Single book by slug, with author join. Returns null when not found.
  */
 export async function getBookBySlug(

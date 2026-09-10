@@ -61,17 +61,24 @@ async function main(): Promise<void> {
     { key: { book_id: 1 }, name: 'reviews_book_id' },
   ]);
 
-  await db.collection('reading_progress').createIndexes([
-    { key: { user_id: 1, book_id: 1 }, unique: true, name: 'reading_progress_user_book_uq' },
-  ]);
+  await db
+    .collection('reading_progress')
+    .createIndexes([
+      { key: { user_id: 1, book_id: 1 }, unique: true, name: 'reading_progress_user_book_uq' },
+    ]);
 
   await db.collection('audit_logs').createIndexes([
     { key: { actor_id: 1, created_at: -1 }, name: 'audit_logs_actor_created' },
     { key: { created_at: -1 }, name: 'audit_logs_created_at' },
   ]);
 
+  // F6.2: event-log idempotency ledger, independent of orders.stripe_payment_intent_id.
+  await db
+    .collection('webhook_events')
+    .createIndexes([{ key: { event_id: 1 }, unique: true, name: 'webhook_events_event_id_uq' }]);
+
   console.log(
-    '✓ profiles, authors, books, orders, reviews, reading_progress, audit_logs indexes ready'
+    '✓ profiles, authors, books, orders, reviews, reading_progress, audit_logs, webhook_events indexes ready'
   );
 }
 
