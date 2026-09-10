@@ -21,8 +21,10 @@ const ContentSecurityPolicy = [
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://checkout.stripe.com",
   // Tailwind/CSS-in-JS produces inline styles at runtime.
   "style-src 'self' 'unsafe-inline'",
-  // Images come from self, Supabase Storage, Stripe, and placeholder services.
-  "img-src 'self' data: blob: https://*.supabase.co https://picsum.photos https://images.unsplash.com https://q.stripe.com",
+  // Images come from self, Supabase Storage, Vercel Blob (Phoenix WS3 —
+  // inert until STORAGE_PROVIDER=vercel-blob, but required before any
+  // cover_url is rewritten to a Blob URL), Stripe, and placeholder services.
+  "img-src 'self' data: blob: https://*.supabase.co https://*.public.blob.vercel-storage.com https://picsum.photos https://images.unsplash.com https://q.stripe.com",
   // API calls go to Supabase (REST + Realtime WS) and Stripe.
   "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://checkout.stripe.com https://q.stripe.com https://*.sentry.io https://*.ingest.sentry.io",
   // Stripe embeds iframes for secure card input.
