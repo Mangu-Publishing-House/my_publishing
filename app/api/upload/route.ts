@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@/lib/supabase/admin';
+import { isBlobPrimary } from '@/lib/storage/provider';
 
 const ALLOWED_FILE_TYPES = new Map([
   ['application/pdf', 'pdf'],
@@ -9,6 +10,33 @@ const ALLOWED_FILE_TYPES = new Map([
   ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'docx'],
   ['text/plain', 'txt'],
 ]);
+
+/**
+ * Phoenix WS3 dual-run (REPO_AUDIT_2026-08-21 F3) — Vercel Blob leg.
+ * This route's Supabase leg has never been content-addressed
+ * (`${userId}/${Date.now()}.${ext}`, no dedup) — deliberately different from
+ * lib/uploads/store-asset.ts's hash-based convention. The Blob leg keeps
+ * that same timestamp-based naming rather than introducing dedup semantics
+ * this route has never had; see PR body for the full rationale.
+ */
+async function uploadManuscriptToBlob(
+  userId: string,
+  fileExt: string,
+  file: File
+): Promise<string> {
+  const { put } = await import('@vercel/blob');
+
+  const blobPath = `${userId}/manuscripts/${Date.now()}.${fileExt}`;
+  const fileBuffer = Buffer.from(await file.arrayBuffer());
+
+  const blob = await put(blobPath, fileBuffer, {
+    access: 'public',
+    contentType: file.type,
+    addRandomSuffix: false,
+  });
+
+  return blob.url;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,6 +73,11 @@ export async function POST(request: NextRequest) {
         { error: 'Unsupported file type. Upload a PDF, Word document, or plain text file.' },
         { status: 400 }
       );
+    }
+
+    if (isBlobPrimary()) {
+      const url = await uploadManuscriptToBlob(user.id, fileExt, file);
+      return NextResponse.json({ url });
     }
 
     const fileName = `${user.id}/${Date.now()}.${fileExt}`;

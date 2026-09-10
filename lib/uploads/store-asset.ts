@@ -9,6 +9,10 @@ import { UPLOAD_CONFIGS } from '@/types/upload';
  * Used by app/api/upload/book-assets/route.ts. Mirrors the proven logic in
  * lib/actions/upload.ts (SHA-256 content-addressed paths + dedup) without
  * touching that server action. All functions here must run server-side only.
+ *
+ * Phoenix WS3 dual-run (REPO_AUDIT_2026-08-21 F3): storeBookAssetToBlob is the
+ * Vercel Blob leg, called by the route above when isBlobPrimary() is true.
+ * storeBookAsset (Supabase, below) is left completely untouched.
  */
 
 export type BookAssetKind = 'cover' | 'epub';
@@ -119,4 +123,48 @@ export async function storeBookAsset(
   } = supabase.storage.from(bucket).getPublicUrl(filePath);
 
   return { url: publicUrl, filePath, hash, deduplicated };
+}
+
+/**
+ * Stores a book asset in Vercel Blob with the same content-addressed path
+ * convention as storeBookAsset: `${hash}.${ext}`, scoped under the asset's
+ * bucket name (`book-covers` / `published-epubs`) as a path segment so
+ * cover and EPUB blobs can't collide in Blob's single flat namespace the
+ * way they never could across Supabase's separate buckets — mirroring the
+ * `${userId}/${bucket}/${fileName}` shape lib/actions/upload.ts's
+ * uploadToBlob() already uses.
+ *
+ * @vercel/blob's `put()` (PutBlobResult) does not report whether the target
+ * pathname already existed — there is no overwrite/dedup field on the
+ * response in the installed SDK version. Every Blob upload is therefore
+ * reported as `deduplicated: false`, the same documented choice already
+ * made in lib/actions/upload.ts's uploadToBlob().
+ */
+export async function storeBookAssetToBlob(
+  asset: BookAssetKind,
+  userId: string,
+  file: File
+): Promise<StoredBookAsset> {
+  const { put } = await import('@vercel/blob');
+  const bucket = BOOK_ASSET_BUCKETS[asset];
+
+  const fileBuffer = Buffer.from(await file.arrayBuffer());
+  const hash = createHash('sha256').update(fileBuffer).digest('hex');
+  const fileExt = (file.name.split('.').pop() || 'bin').toLowerCase();
+  const fileName = `${hash}.${fileExt}`;
+  const filePath = `${userId}/${bucket}/${fileName}`;
+
+  // Same MIME normalization as the Supabase leg: the published-epubs bucket
+  // only allows application/epub+zip, and Blob has no bucket-level MIME
+  // allowlist to enforce it for us.
+  const contentType =
+    asset === 'epub' ? 'application/epub+zip' : file.type || 'application/octet-stream';
+
+  const blob = await put(filePath, fileBuffer, {
+    access: 'public',
+    contentType,
+    addRandomSuffix: false,
+  });
+
+  return { url: blob.url, filePath, hash, deduplicated: false };
 }

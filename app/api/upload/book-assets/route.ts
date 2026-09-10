@@ -1,15 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@/lib/supabase/admin';
-import { storeBookAsset, validateBookAsset, type BookAssetKind } from '@/lib/uploads/store-asset';
+import {
+  storeBookAsset,
+  storeBookAssetToBlob,
+  validateBookAsset,
+  type BookAssetKind,
+} from '@/lib/uploads/store-asset';
+import { isBlobPrimary } from '@/lib/storage/provider';
 
 /**
  * POST /api/upload/book-assets
  * Multipart upload for book covers and published EPUBs.
  * Fields: `file` (File), `asset` ('cover' | 'epub').
  * Auth: requires a signed-in user (rate-limited by middleware on /api/upload*).
- * Storage: service-role client after the auth check; content-addressed paths
- * with SHA-256 dedup (see lib/uploads/store-asset.ts).
+ * Storage: dual-run on STORAGE_PROVIDER (Phoenix WS3, REPO_AUDIT_2026-08-21 F3).
+ * Supabase leg (default): service-role client after the auth check, content-
+ * addressed paths with SHA-256 dedup. Blob leg: same content-addressed
+ * naming convention via storeBookAssetToBlob — see lib/uploads/store-asset.ts
+ * for both.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -49,8 +58,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
 
-    const admin = createAdminClient();
-    const result = await storeBookAsset(admin, asset, user.id, file);
+    const result = isBlobPrimary()
+      ? await storeBookAssetToBlob(asset, user.id, file)
+      : await storeBookAsset(createAdminClient(), asset, user.id, file);
 
     return NextResponse.json(result);
   } catch (error) {
