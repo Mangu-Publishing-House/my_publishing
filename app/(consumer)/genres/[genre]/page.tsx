@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { BookOpen, ArrowLeft } from 'lucide-react';
@@ -10,21 +11,30 @@ interface GenrePageProps {
   }>;
 }
 
+// One request-scoped fetch shared by generateMetadata and the page body —
+// noindexing empty genres would otherwise cost a second query per request.
+const getBooksForGenre = cache((genre: string) => listBooksByGenreParam(genre));
+
 export async function generateMetadata({ params }: GenrePageProps): Promise<Metadata> {
   const { genre: genreParam } = await params;
   const genreName = decodeURIComponent(genreParam);
   const displayName = genreName.charAt(0).toUpperCase() + genreName.slice(1);
+  const books = await getBooksForGenre(genreName);
 
   return {
     title: `${displayName} Books | MANGU Publishers`,
     description: `Browse ${displayName.toLowerCase()} books on MANGU Publishers. Discover new titles and bestsellers in ${displayName.toLowerCase()}.`,
+    // Soft-404 for search engines: any /genres/{arbitrary} still renders the
+    // browse-all fallback UI for humans, but doesn't add a thin-content page
+    // to the index. Real genres flip back to the site default of indexable.
+    robots: books.length === 0 ? { index: false, follow: true } : undefined,
   };
 }
 
 export default async function GenrePage({ params }: GenrePageProps) {
   const { genre: genreParam } = await params;
   const genreName = decodeURIComponent(genreParam);
-  const books = await listBooksByGenreParam(genreName);
+  const books = await getBooksForGenre(genreName);
   const displayName = genreName.charAt(0).toUpperCase() + genreName.slice(1);
 
   return (
