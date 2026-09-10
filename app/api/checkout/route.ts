@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { getRequestUser } from '@/lib/api/request-user';
 import { createCheckoutSession } from '@/lib/stripe/server';
 import { fetchBookForApi } from '@/lib/data/books';
 import type { CheckoutSessionRequest, CheckoutSessionResponse } from '@/types';
@@ -22,12 +22,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = await createClient();
-
-    // Verify user (prod remains AUTH_PROVIDER=supabase until cutover)
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    // Dual-run session check (WS2b): the shim resolves Supabase today and
+    // Better Auth after cutover — its supabase branch performs the same
+    // getUser() this route did directly, so behavior is identical in prod.
+    const user = await getRequestUser();
     if (!user || user.id !== user_id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
